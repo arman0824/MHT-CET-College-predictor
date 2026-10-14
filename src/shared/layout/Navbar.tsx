@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { School, Search, Target, GitCompare, BookOpen, ShieldCheck, Menu, Download } from 'lucide-react';
 import { MobileSheet } from '../components/MobileSheet';
+import { RoundSelector } from '../components/RoundSelector';
 import type { AppTab } from '../../app/navigation';
+import type { CapRound } from '../types/college';
 
 interface NavbarProps {
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
   compareCount: number;
+  selectedRound: CapRound;
+  onRoundChange: (round: CapRound) => void;
 }
 
 type TabKey = AppTab;
@@ -75,7 +79,7 @@ const TAB_META: Record<TabKey, TabMeta> = {
   }
 };
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, compareCount }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, compareCount, selectedRound, onRoundChange }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const handleSelect = (tab: AppTab) => {
@@ -138,7 +142,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, compare
                       <ShieldCheck className="w-3 h-3 text-google-green-600 inline" />
                       Official CAP Cutoffs
                     </span>
-                    370+ Maharashtra Colleges
+                   387 Maharashtra Colleges · 2026 Data
                   </p>
                 </div>
               </div>
@@ -175,13 +179,14 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, compare
 
             <div className="flex items-center justify-end">
               <div className="flex items-center gap-3 shrink-0">
+                <RoundSelector value={selectedRound} onChange={onRoundChange} compact />
                 <a
-                  href="/CAP-round-2025.pdf"
-                  download="MHT-CET-CAP-ROUND-2025.pdf"
+                  href={`/round${selectedRound}_26.pdf`}
+                  download={`MHT-CET-CAP-ROUND-${selectedRound}-2026.pdf`}
                   className="hidden lg:flex items-center gap-2 bg-google-blue-50 text-google-blue-700 border border-google-blue-100 text-xs font-bold px-4 py-2 rounded-full hover:bg-google-blue-100 hover:border-google-blue-200 transition-colors duration-150"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  2025 Cutoffs
+                  Download PDF
                 </a>
               </div>
             </div>
@@ -197,6 +202,9 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, compare
         variant="drawer"
       >
         <nav className="flex flex-col gap-2 pt-1">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <RoundSelector value={selectedRound} onChange={onRoundChange} />
+          </div>
           {(Object.keys(TAB_META) as Array<TabKey>).map((key) => {
             const meta = TAB_META[key];
             const Icon = meta.icon;
@@ -234,17 +242,17 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, compare
           })}
 
           <a
-              href="/CAP-round-2025.pdf"
-              download="MHT-CET-CAP-ROUND-2025.pdf"
+              href={`/round${selectedRound}_26.pdf`}
+              download={`MHT-CET-CAP-ROUND-${selectedRound}-2026.pdf`}
               className="md:hidden mt-3 touch-target w-full inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-full"
             >
               <Download className="w-4 h-4" />
-              Download 2025 CUT-OFF PDF
+              Download {selectedRound === 4 ? 'Latest' : `Round ${selectedRound}`} PDF
             </a>
 
           <p className="text-[12px] text-slate-500 text-center mt-2 flex items-center justify-center gap-1">
             <ShieldCheck className="w-3 h-3 text-google-green-600" />
-            370+ Maharashtra colleges
+             387 Maharashtra colleges · 2026 data
           </p>
         </nav>
       </MobileSheet>

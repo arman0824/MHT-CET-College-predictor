@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "data:generate": "node scripts/generate-colleges.cjs",
-    "data:extract": "python3 scripts/extract-cap-cutoffs.py",
+    "data:extract": "node scripts/run-cap-extract.cjs",
+    "data:validate": "node scripts/validate-colleges.cjs",
     "preview": "vite preview"
   },
   "dependencies": {

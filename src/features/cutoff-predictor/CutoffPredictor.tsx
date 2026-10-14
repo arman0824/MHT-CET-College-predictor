@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { College } from '../../shared/types/college';
+import type { CapRound, College } from '../../shared/types/college';
 import { Target, Sparkles, CheckCircle, AlertCircle, BookmarkPlus, MapPin, Save } from 'lucide-react';
 import { calculatePredictions, type PredictionBucket } from './predictionUtils';
-import { ALL_CATEGORIES } from '../../shared/lib/college';
+import { ALL_CATEGORIES, discoverCategories, ROUND_LABELS } from '../../shared/lib/college';
 
 interface CutoffPredictorProps {
   colleges: College[];
+  selectedRound: CapRound;
   onToggleCompare: (college: College) => void;
   comparedColleges: College[];
 }
@@ -82,24 +83,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   PWDSCS: 'PWDSCS (PWD SC State)'
 };
 
-const BRANCHES = [
-  { id: 'ALL', label: 'All Branches' },
-  { id: 'Computer', label: 'Computer Engineering / CSE' },
-  { id: 'Information Technology', label: 'Information Technology (IT)' },
-  { id: 'Artificial Intelligence', label: 'AI & Data Science / AIML' },
-  { id: 'Telecommunication', label: 'Electronics & Telecommunication' },
-  { id: 'Electrical', label: 'Electrical Engineering' },
-  { id: 'Mechanical', label: 'Mechanical Engineering' },
-  { id: 'Civil', label: 'Civil Engineering' }
-];
-
-const STORAGE_KEY = 'cetvault.predictor.v1';
+const STORAGE_KEY = 'cetvault.predictor.v2';
 
 interface PersistedState {
   percentile: number;
   category: string;
   region: string;
   branch: string;
+  round?: CapRound;
 }
 
 const loadPersisted = (): PersistedState | null => {
@@ -126,7 +117,7 @@ const BUCKET_META: Record<PredictionBucket, { label: string; short: string; icon
     textClass: 'text-google-green-700',
     badgeBgClass: 'bg-google-green-500',
     ringClass: 'ring-google-green-500/20',
-    description: 'Cutoff ≤ your score. High admission probability in CAP Round 1.'
+    description: 'The selected-round cutoff is at or below your percentile. This is a comparison aid, not a guarantee.'
   },
   moderate: {
     label: 'Good Chance (Competitive)',
@@ -138,7 +129,7 @@ const BUCKET_META: Record<PredictionBucket, { label: string; short: string; icon
     textClass: 'text-amber-700',
     badgeBgClass: 'bg-amber-500',
     ringClass: 'ring-amber-500/20',
-    description: 'Cutoff up to 1.5% above your score. Competitive for CAP Round 2 & 3.'
+    description: 'The selected-round cutoff is up to 1.5% above your percentile.'
   },
   dream: {
     label: 'Target / Dream',
@@ -150,64 +141,30 @@ const BUCKET_META: Record<PredictionBucket, { label: string; short: string; icon
     textClass: 'text-google-blue-700',
     badgeBgClass: 'bg-google-blue-500',
     ringClass: 'ring-google-blue-500/20',
-    description: 'Cutoff 1.5%–3.5% above your score. Try CAP Round 3 or ACAP spots.'
+    description: 'The selected-round cutoff is 1.5%–3.5% above your percentile.'
   }
 };
 
 export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
   colleges,
+  selectedRound,
   onToggleCompare,
   comparedColleges
 }) => {
   const initial = loadPersisted();
 
-  // Dynamically extract all reservation categories present across colleges.ts
-  const categories = useMemo(() => {
-    const catSet = new Set<string>();
-    colleges.forEach((college) => {
-      college.branches?.forEach((branch) => {
-        if (branch.cutoffs2025) {
-          Object.keys(branch.cutoffs2025).forEach((cat) => {
-            if (cat) catSet.add(cat);
-          });
-        }
-      });
-    });
+  const categories = useMemo(
+    () => discoverCategories(colleges).map((id) => ({ id, label: CATEGORY_LABELS[id] || `${id} (${id})` })),
+    [colleges],
+  );
 
-    if (catSet.size === 0) {
-      return [{ id: 'GOPENH', label: 'GOPENH (General Open Home Univ)' }];
-    }
-
-    const priorityOrder: Record<string, number> = {
-      GOPENH: 1,
-      GOPENO: 2,
-      GOPENS: 3,
-      LOPENH: 4,
-      LOPENO: 5,
-      OBC: 6,
-      GOBCH: 7,
-      SC: 8,
-      GSCH: 9,
-      ST: 10,
-      GSTH: 11,
-      EWS: 12,
-      TFWS: 13
-    };
-
-    const list = Array.from(catSet).map((id) => ({
-      id,
-      label: CATEGORY_LABELS[id] || `${id} (${id})`
-    }));
-
-    list.sort((a, b) => {
-      const pA = priorityOrder[a.id] ?? 999;
-      const pB = priorityOrder[b.id] ?? 999;
-      if (pA !== pB) return pA - pB;
-      return a.id.localeCompare(b.id);
-    });
-
-    return list;
-  }, [colleges]);
+  const regionOptions = useMemo(() => [
+    { id: 'ALL', label: 'All regions' },
+    ...Array.from(new Set(colleges.map((college) => college.region).filter(Boolean))).sort().map((region) => ({
+      id: region as string,
+      label: region as string,
+    })),
+  ], [colleges]);
 
   // Allowed userPercentile state to be number OR string to permit clear/empty inputs
   const [userPercentile, setUserPercentile] = useState<number | string>(initial?.percentile ?? 95.0);
@@ -215,8 +172,8 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
     if (initial?.category) return initial.category;
     return ALL_CATEGORIES;
   });
-  const [selectedRegion, ] = useState<string>(initial?.region ?? 'ALL');
-  const [selectedBranch, setSelectedBranch] = useState<string>(initial?.branch ?? 'ALL');
+  const [selectedRegion, setSelectedRegion] = useState<string>(initial?.region ?? 'ALL');
+  const [selectedBranch, setSelectedBranch] = useState<string>(initial?.branch ?? '');
   const [activeTab, setActiveTab] = useState<PredictionBucket>('safe');
   const [saved, setSaved] = useState<boolean>(!!initial);
 
@@ -240,7 +197,8 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
           percentile: Number(userPercentile) || 0,
           category: userCategory,
           region: selectedRegion,
-          branch: selectedBranch
+          branch: selectedBranch,
+          round: selectedRound,
         } satisfies PersistedState)
       );
       setSaved(true);
@@ -277,13 +235,13 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
               MHT-CET <span className="text-google-green-600">Admission Predictor</span>
             </h1>
             <p className="text-sm text-slate-500 font-medium">
-              Enter your score & category to view your admission probability for CAP Round 1 & 2.
+              Compare your percentile with published {ROUND_LABELS[selectedRound]} cutoffs. Results are indicative, not guaranteed.
             </p>
           </div>
         </div>
 
         {/* Inputs Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 bg-slate-50 p-4 sm:p-6 rounded-2xl border border-slate-200/60">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 bg-slate-50 p-4 sm:p-6 rounded-2xl border border-slate-200/60">
 
           <div>
             <label className="text-sm font-bold text-slate-700 mb-2 flex items-center gap-1">
@@ -328,14 +286,25 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
           </div>
 
           <div>
-            <label className="text-sm font-bold text-slate-700 mb-2 block">Preferred Branch</label>
-            <select
+            <label className="text-sm font-bold text-slate-700 mb-2 block">Preferred Course</label>
+            <input
+              type="search"
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
+              placeholder="All courses or search"
+              className="touch-target w-full bg-white border border-slate-300 text-slate-800 text-sm font-semibold rounded-xl p-3.5 focus:ring-2 focus:ring-google-green-500 focus:outline-none shadow-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-bold text-slate-700 mb-2 block">Region</label>
+            <select
+              value={selectedRegion}
+              onChange={(e) => setSelectedRegion(e.target.value)}
               className="touch-target w-full bg-white border border-slate-300 text-slate-800 text-sm font-semibold rounded-xl p-3.5 focus:ring-2 focus:ring-google-green-500 focus:outline-none shadow-sm"
             >
-              {BRANCHES.map((b) => (
-                <option key={b.id} value={b.id}>{b.label}</option>
+              {regionOptions.map((region) => (
+                <option key={region.id} value={region.id}>{region.label}</option>
               ))}
             </select>
           </div>
@@ -346,7 +315,7 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
           <div className="text-sm font-semibold text-slate-800 flex items-center gap-2 flex-wrap">
             <span>Calculated for:</span>
             <span className="bg-google-green-50 text-google-green-700 border border-google-green-200 px-3 py-1 rounded-full text-xs font-bold">
-              {userPercentile || 0}%ile • {userCategory === ALL_CATEGORIES ? 'All Categories' : userCategory}
+              {userPercentile || 0}%ile • {userCategory === ALL_CATEGORIES ? 'All Categories' : userCategory} • {ROUND_LABELS[selectedRound]}
             </span>
           </div>
 
@@ -465,7 +434,7 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
                         </span>
                         <span className="text-slate-500 font-medium flex items-center gap-1">
                           <MapPin className="w-3 h-3 text-google-red-500 shrink-0" />
-                          {item.college.city}
+                          {item.college.city || 'Location unavailable'}
                         </span>
                       </div>
                     </div>
@@ -486,16 +455,16 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
                   <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3">
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5">
                       <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Cutoff 2025 ({userCategory === ALL_CATEGORIES ? 'Best' : userCategory})
+                        Cutoff 2026 ({userCategory === ALL_CATEGORIES ? 'Best' : userCategory})
                       </div>
                       <div className="mt-0.5 text-base sm:text-lg font-black text-slate-900">
                         {item.cutoffP.toFixed(2)}<span className="text-xs sm:text-sm font-bold text-slate-500">%ile</span>
                       </div>
                     </div>
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5">
-                      <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Rank</div>
-                      <div className="mt-0.5 text-base sm:text-lg font-black text-slate-900">
-                        #{item.rank.toLocaleString()}
+                        <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400">Merit Number</div>
+                        <div className="mt-0.5 text-base sm:text-lg font-black text-slate-900">
+                          {item.meritNumber ? `#${item.meritNumber.toLocaleString()}` : 'N/A'}
                       </div>
                     </div>
                     <div className={`rounded-xl px-2.5 py-2 sm:px-3 sm:py-2.5 border ${

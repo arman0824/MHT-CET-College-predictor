@@ -68,7 +68,7 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
           </div>
 
           <p className="text-sm text-slate-400 leading-relaxed max-w-md">
-            India's most comprehensive MHT-CET engineering cutoff tracker. Real-time data for 370+ Maharashtra colleges across Mumbai, Pune, Nagpur, Nashik, and all major regions.
+             Maharashtra engineering cutoff tracker with 2026 CAP data for 387 colleges and 2,332 courses across Mumbai, Pune, Nagpur, Nashik, and all major regions.
           </p>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -146,14 +146,17 @@ export const Footer: React.FC<FooterProps> = ({ setActiveTab }) => {
                 <ExternalLink className="w-4 h-4 shrink-0 text-slate-400" />
                 <span>Merit List 2026</span>
               </a>
-              <a
-                href="/CAP-round-2025.pdf"
-                download="MHT-CET-CAP-ROUND-2025.pdf"
-                className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors py-1"
-              >
-                <Download className="w-4 h-4 shrink-0 text-slate-400" />
-                <span>Information Brochure PDF</span>
-              </a>
+              {[1, 2, 3, 4].map((round) => (
+                <a
+                  key={round}
+                  href={`/round${round}_26.pdf`}
+                  download={`MHT-CET-CAP-ROUND-${round}-2026.pdf`}
+                  className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors py-1"
+                >
+                  <Download className="w-4 h-4 shrink-0 text-slate-400" />
+                  <span>2026 CAP Round {round} PDF</span>
+                </a>
+              ))}
             </nav>
           </AccordionSection>
         </div>

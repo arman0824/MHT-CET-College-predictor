@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import type { College } from '../../shared/types/college';
+import type { CapRound, College } from '../../shared/types/college';
 import { MapPin, Star, ChevronDown, ChevronUp, Plus, Check, Award, Flame } from 'lucide-react';
-import { findPreferredBranch, hasCategoryCutoff, ALL_CATEGORIES, getBestCutoff } from '../../shared/lib/college';
+import { ALL_CATEGORIES, getBestCutoff, getPreferredCutoff, findPreferredBranch, ROUND_LABELS } from '../../shared/lib/college';
 
 interface CollegeCardProps {
   college: College;
+  selectedRound: CapRound;
   selectedCategory: string;
   isCompared: boolean;
   onToggleCompare: (college: College) => void;
@@ -12,6 +13,7 @@ interface CollegeCardProps {
 
 export const CollegeCard: React.FC<CollegeCardProps> = ({
   college,
+  selectedRound,
   selectedCategory,
   isCompared,
   onToggleCompare
@@ -21,11 +23,11 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
 
   const csBranch = findPreferredBranch(college, selectedCategory) ?? college.branches[0];
 
-  const topCutoff2025 = selectedCategory === ALL_CATEGORIES ? getBestCutoff(csBranch) : csBranch?.cutoffs2025?.[selectedCategory];
+  const topCutoff = selectedCategory === ALL_CATEGORIES
+    ? getBestCutoff(csBranch)
+    : getPreferredCutoff(csBranch, selectedCategory);
 
-  const availableBranches = selectedCategory === ALL_CATEGORIES
-    ? college.branches.filter((branch) => hasCategoryCutoff(branch, ALL_CATEGORIES))
-    : college.branches.filter((branch) => hasCategoryCutoff(branch, selectedCategory));
+  const availableBranches = college.branches;
   const displayedBranches = activeBranchFilter === 'ALL'
     ? availableBranches
     : availableBranches.filter(b => b.name.toLowerCase().includes(activeBranchFilter.toLowerCase()));
@@ -44,7 +46,7 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
 
         <div className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200/60">
           <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
-          <span>{college.rating}</span>
+          <span>{college.rating === null ? 'N/A' : `${college.rating.toFixed(1)} / 5`}</span>
         </div>
       </div>
 
@@ -55,7 +57,10 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
         </h3>
         <p className="text-xs sm:text-sm text-slate-500 font-medium flex items-center gap-1.5 mt-1.5">
           <MapPin className="w-3.5 h-3.5 text-google-red-500 shrink-0" />
-          <span>{college.city}, {college.region} Region</span>
+          <span>{college.city || 'Location unavailable'}{college.region ? `, ${college.region}` : ''}</span>
+        </p>
+        <p className="text-[11px] text-slate-400 mt-1">
+          {college.status || 'College type unavailable'}{college.homeUniversity ? ` · ${college.homeUniversity}` : ''}
         </p>
       </div>
 
@@ -64,19 +69,19 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
             <Flame className="w-3.5 h-3.5 text-google-red-500 shrink-0" />
-            <span className="truncate">Top Branch ({csBranch?.name.split(" ")[0]}):</span>
+            <span className="truncate">Top Branch ({csBranch?.name || 'Published course'}):</span>
             <span className="bg-google-blue-100 text-google-blue-800 font-bold px-1.5 py-0.2 rounded text-[10px] shrink-0">
               {selectedCategory === ALL_CATEGORIES ? 'Best' : selectedCategory}
             </span>
           </div>
           <div className="flex items-baseline gap-2 mt-1 flex-wrap">
-            {topCutoff2025 ? (
+            {topCutoff ? (
               <>
                 <span className="text-2xl font-black text-slate-900 tracking-tight">
-                  {topCutoff2025.percentile.toFixed(2)}%ile
+                  {topCutoff.percentile.toFixed(2)}%ile
                 </span>
                 <span className="text-xs font-semibold text-slate-500">
-                  (Rank ~#{topCutoff2025.rank.toLocaleString()})
+                  {topCutoff.meritNumber ? `(Merit #${topCutoff.meritNumber.toLocaleString()})` : '(Merit unavailable)'}
                 </span>
               </>
             ) : (
@@ -85,6 +90,10 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
           </div>
         </div>
       </div>
+
+      <p className="mt-2 text-[11px] text-slate-400">
+        {ROUND_LABELS[selectedRound]} · Rating is a cutoff-strength score, not a review rating.
+      </p>
 
       {/* Action Buttons Row */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 pt-2">
@@ -150,8 +159,7 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
           <div className="sm:hidden space-y-2">
             {displayedBranches.length > 0 ? (
               displayedBranches.map((br) => {
-                const c2025 = selectedCategory === ALL_CATEGORIES ? getBestCutoff(br) : br.cutoffs2025[selectedCategory];
-                if (!c2025) return null;
+                const cutoff = selectedCategory === ALL_CATEGORIES ? getBestCutoff(br) : getPreferredCutoff(br, selectedCategory);
                 return (
                   <div key={br.code} className="bg-slate-50/70 border border-slate-200 rounded-xl p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -160,20 +168,21 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
                         <div className="text-[11px] text-slate-400 font-mono">Code: {br.code}</div>
                       </div>
                       <div className="text-right shrink-0">
-                        <div className="text-base font-black text-google-blue-600">{c2025.percentile.toFixed(2)}%</div>
-                        <div className="text-[11px] font-semibold text-slate-400">2025</div>
+                        <div className="text-base font-black text-google-blue-600">{cutoff ? `${cutoff.percentile.toFixed(2)}%` : 'N/A'}</div>
+                        <div className="text-[11px] font-semibold text-slate-400">{cutoff ? '2026' : 'No published cutoff'}</div>
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                       <div className="bg-white rounded-lg border border-slate-200 px-2 py-1.5">
                         <div className="text-[10px] text-slate-400 font-bold uppercase">Rank</div>
-                        <div className="font-mono font-semibold text-slate-700">#{c2025.rank.toLocaleString()}</div>
+                        <div className="font-mono font-semibold text-slate-700">{cutoff?.meritNumber ? `#${cutoff.meritNumber.toLocaleString()}` : 'N/A'}</div>
                       </div>
                       <div className="bg-white rounded-lg border border-slate-200 px-2 py-1.5">
                         <div className="text-[10px] text-slate-400 font-bold uppercase">Intake</div>
-                        <div className="font-semibold text-slate-700">{br.intake}</div>
+                        <div className="font-semibold text-slate-700">{br.intake ?? 'N/A'}</div>
                       </div>
                     </div>
+                    {cutoff ? <div className="mt-2 text-[11px] text-slate-500">{cutoff.stage || 'Stage unavailable'} · {cutoff.allocation || 'Allocation unavailable'}</div> : null}
                   </div>
                 );
               })
@@ -190,16 +199,16 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
               <thead className="bg-slate-100 text-slate-700 font-semibold uppercase tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="p-3">Branch Name</th>
-                  <th className="p-3 text-center">2025 Cutoff (%ile)</th>
-                  <th className="p-3 text-center">Approx State Rank</th>
+                  <th className="p-3 text-center">2026 Cutoff (%ile)</th>
+                  <th className="p-3 text-center">Merit Number</th>
+                  <th className="p-3 text-center">Stage / Allocation</th>
                   <th className="p-3 text-center">Intake</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200/80 bg-white">
                 {displayedBranches.length > 0 ? (
                   displayedBranches.map((br) => {
-                    const c2025 = selectedCategory === ALL_CATEGORIES ? getBestCutoff(br) : br.cutoffs2025[selectedCategory];
-                    if (!c2025) return null;
+                    const cutoff = selectedCategory === ALL_CATEGORIES ? getBestCutoff(br) : getPreferredCutoff(br, selectedCategory);
 
                     return (
                       <tr key={br.code} className="hover:bg-slate-50 transition-colors">
@@ -208,20 +217,23 @@ export const CollegeCard: React.FC<CollegeCardProps> = ({
                           <span className="text-[10px] text-slate-400 font-mono">Code: {br.code}</span>
                         </td>
                         <td className="p-3 text-center font-bold text-google-blue-600 text-sm">
-                          {c2025.percentile.toFixed(2)}%
+                          {cutoff ? `${cutoff.percentile.toFixed(2)}%` : 'N/A'}
                         </td>
                         <td className="p-3 text-center font-mono text-slate-600">
-                          #{c2025.rank.toLocaleString()}
+                          {cutoff?.meritNumber ? `#${cutoff.meritNumber.toLocaleString()}` : 'N/A'}
                         </td>
                         <td className="p-3 text-center text-slate-600">
-                          {br.intake} seats
+                          {cutoff ? `${cutoff.stage || '—'} · ${cutoff.allocation || '—'}` : '—'}
+                        </td>
+                        <td className="p-3 text-center text-slate-600">
+                          {br.intake ? `${br.intake} seats` : 'N/A'}
                         </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={4} className="p-4 text-center text-slate-400 italic">
+                    <td colSpan={5} className="p-4 text-center text-slate-400 italic">
                       No branches found with cutoff data for "{selectedCategory === ALL_CATEGORIES ? 'All Categories' : selectedCategory}" matching "{activeBranchFilter}".
                     </td>
                   </tr>

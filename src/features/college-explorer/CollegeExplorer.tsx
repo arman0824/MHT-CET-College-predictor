@@ -1,13 +1,22 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import type { College } from '../../shared/types/college';
+import type { CapRound, College } from '../../shared/types/college';
 import { CollegeCard } from './CollegeCard';
 import { Search, SlidersHorizontal, RotateCcw, Filter, Check } from 'lucide-react';
 import { MobileSheet } from '../../shared/components/MobileSheet';
 import { Chip } from '../../shared/components/Chip';
-import { findPreferredBranch, hasCategoryCutoff, ALL_CATEGORIES, getBestCutoff } from '../../shared/lib/college';
+import {
+  ALL_CATEGORIES,
+  ALL_BRANCHES,
+  collegeSearchText,
+  discoverCategories,
+  findBestBranchForFilter,
+  normalizeSearchText,
+  ROUND_LABELS,
+} from '../../shared/lib/college';
 
 interface CollegeExplorerProps {
   colleges: College[];
+  selectedRound: CapRound;
   comparedColleges: College[];
   onToggleCompare: (college: College) => void;
 }
@@ -84,22 +93,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   PWDSCS: 'PWDSCS (PWD SC State)'
 };
 
-const BRANCH_OPTIONS = [
-  { id: 'ALL', label: 'All Branches' },
-  { id: 'Computer', label: 'Computer Engineering / CSE' },
-  { id: 'Information Technology', label: 'Information Technology (IT)' },
-  { id: 'Artificial Intelligence', label: 'AI & Data Science / AIML' },
-  { id: 'Telecommunication', label: 'Electronics & Telecommunication' },
-  { id: 'Electrical', label: 'Electrical Engineering' },
-  { id: 'Mechanical', label: 'Mechanical Engineering' },
-  { id: 'Civil', label: 'Civil Engineering' },
-  { id: 'Chemical', label: 'Chemical Engineering' }
-];
-
-const STATUS_OPTIONS = [
-  { id: 'ALL', label: 'All College Types' },
-];
-
 const SORT_OPTIONS: Array<{ id: 'percentile_desc' | 'percentile_asc' | 'name' | 'rating'; label: string }> = [
   { id: 'percentile_desc', label: 'Cutoff: High to Low' },
   { id: 'percentile_asc', label: 'Cutoff: Low to High' },
@@ -111,61 +104,35 @@ const RESULTS_PER_PAGE = 24;
 
 export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
   colleges,
+  selectedRound,
   comparedColleges,
   onToggleCompare
 }) => {
-  // Dynamically extract all reservation categories present across colleges.ts
-  const categories = useMemo(() => {
-    const catSet = new Set<string>();
-    colleges.forEach((college) => {
-      college.branches?.forEach((branch) => {
-        if (branch.cutoffs2025) {
-          Object.keys(branch.cutoffs2025).forEach((cat) => {
-            if (cat) catSet.add(cat);
-          });
-        }
-      });
-    });
+  const categories = useMemo(
+    () => discoverCategories(colleges).map((id) => ({ id, label: CATEGORY_LABELS[id] || `${id} (${id})` })),
+    [colleges],
+  );
 
-    if (catSet.size === 0) {
-      return [{ id: 'GOPENH', label: 'GOPENH (General Open Home Univ)' }];
-    }
+  const regionOptions = useMemo(() => [
+    { id: 'ALL', label: 'All regions' },
+    ...Array.from(new Set(colleges.map((college) => college.region).filter(Boolean))).sort().map((region) => ({
+      id: region as string,
+      label: region as string,
+    })),
+  ], [colleges]);
 
-    const priorityOrder: Record<string, number> = {
-      GOPENH: 1,
-      GOPENO: 2,
-      GOPENS: 3,
-      LOPENH: 4,
-      LOPENO: 5,
-      OBC: 6,
-      GOBCH: 7,
-      SC: 8,
-      GSCH: 9,
-      ST: 10,
-      GSTH: 11,
-      EWS: 12,
-      TFWS: 13
-    };
-
-    const list = Array.from(catSet).map((id) => ({
-      id,
-      label: CATEGORY_LABELS[id] || `${id} (${id})`
-    }));
-
-    list.sort((a, b) => {
-      const pA = priorityOrder[a.id] ?? 999;
-      const pB = priorityOrder[b.id] ?? 999;
-      if (pA !== pB) return pA - pB;
-      return a.id.localeCompare(b.id);
-    });
-
-    return list;
-  }, [colleges]);
+  const statusOptions = useMemo(() => [
+    { id: 'ALL', label: 'All college types' },
+    ...Array.from(new Set(colleges.map((college) => college.ownership).filter(Boolean))).sort().map((status) => ({
+      id: status as string,
+      label: status as string,
+    })),
+  ], [colleges]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
-  const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
+  const [selectedBranch, setSelectedBranch] = useState<string>(ALL_BRANCHES);
   const [selectedCategory, setSelectedCategory] = useState<string>(ALL_CATEGORIES);
   const [sortBy, setSortBy] = useState<'percentile_desc' | 'percentile_asc' | 'name' | 'rating'>('percentile_desc');
   const [minPercentile, setMinPercentile] = useState<number>(0);
@@ -177,7 +144,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
     setSearchTerm('');
     setSelectedRegion('ALL');
     setSelectedStatus('ALL');
-    setSelectedBranch('ALL');
+    setSelectedBranch(ALL_BRANCHES);
     setSelectedCategory(ALL_CATEGORIES);
     setSortBy('percentile_desc');
     setMinPercentile(0);
@@ -190,49 +157,48 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
     (selectedCategory !== ALL_CATEGORIES ? 1 : 0) +
     (minPercentile > 0 ? 1 : 0);
 
-  // Filter & Sort Logic - strictly requires exact category cutoff data
+  // Filter and sort against the selected round and exact selected category.
   const filteredColleges = useMemo(() => {
     return colleges.filter((col) => {
-      // Must have at least one branch with exact category cutoff data
-      const hasCategoryData = col.branches.some((branch) => hasCategoryCutoff(branch, selectedCategory));
-      if (!hasCategoryData) return false;
-
       const matchesSearch =
-        deferredSearchTerm.trim() === '' ||
-        col.name.toLowerCase().includes(deferredSearchTerm.toLowerCase()) ||
-        col.shortName.toLowerCase().includes(deferredSearchTerm.toLowerCase()) ||
-        col.city.toLowerCase().includes(deferredSearchTerm.toLowerCase()) ||
-        col.code.includes(deferredSearchTerm);
+        normalizeSearchText(deferredSearchTerm) === '' ||
+        collegeSearchText(col).includes(normalizeSearchText(deferredSearchTerm));
 
       const matchesRegion =
-        selectedRegion === 'ALL' || col.region === selectedRegion || col.city.toLowerCase().includes(selectedRegion.toLowerCase());
+        selectedRegion === 'ALL' || col.region === selectedRegion;
 
       const matchesStatus =
         selectedStatus === 'ALL' ||
-        (selectedStatus === 'Government' && col.status.includes('Government')) ||
-        (selectedStatus === 'Private' && !col.status.includes('Government')) ||
-        (selectedStatus === 'Autonomous' && col.status.includes('Autonomous'));
+        col.ownership === selectedStatus;
 
       const matchesBranch =
-        selectedBranch === 'ALL' ||
-        col.branches.some((branch) => branch.name.toLowerCase().includes(selectedBranch.toLowerCase()) && hasCategoryCutoff(branch, selectedCategory));
+        selectedBranch === ALL_BRANCHES ||
+        col.branches.some((branch) => branch.name.toLowerCase().includes(selectedBranch.toLowerCase()));
 
-      const topBranch = findPreferredBranch(col, selectedCategory);
-      const p = getBestCutoff(topBranch)?.percentile || 0;
-      const matchesPercentile = p >= minPercentile;
+      const bestMatch = findBestBranchForFilter(
+        col,
+        selectedCategory,
+        selectedBranch === ALL_BRANCHES ? '' : selectedBranch,
+      );
+      const matchesPercentile = (bestMatch?.cutoff.percentile ?? 0) >= minPercentile;
 
-      return matchesSearch && matchesRegion && matchesStatus && matchesBranch && matchesPercentile;
+      return matchesSearch && matchesRegion && matchesStatus && matchesBranch && Boolean(bestMatch) && matchesPercentile;
     }).sort((colA, colB) => {
-      const aTopBranch = findPreferredBranch(colA, selectedCategory);
-      const bTopBranch = findPreferredBranch(colB, selectedCategory);
-
-      const aCutoff = getBestCutoff(aTopBranch)?.percentile || 0;
-      const bCutoff = getBestCutoff(bTopBranch)?.percentile || 0;
+      const aCutoff = findBestBranchForFilter(
+        colA,
+        selectedCategory,
+        selectedBranch === ALL_BRANCHES ? '' : selectedBranch,
+      )?.cutoff.percentile ?? 0;
+      const bCutoff = findBestBranchForFilter(
+        colB,
+        selectedCategory,
+        selectedBranch === ALL_BRANCHES ? '' : selectedBranch,
+      )?.cutoff.percentile ?? 0;
 
       if (sortBy === 'percentile_desc') return bCutoff - aCutoff;
       if (sortBy === 'percentile_asc') return aCutoff - bCutoff;
       if (sortBy === 'name') return colA.name.localeCompare(colB.name);
-      if (sortBy === 'rating') return colB.rating - colA.rating;
+      if (sortBy === 'rating') return (colB.rating ?? 0) - (colA.rating ?? 0);
       return 0;
     });
   }, [colleges, deferredSearchTerm, selectedRegion, selectedStatus, selectedBranch, selectedCategory, sortBy, minPercentile]);
@@ -243,8 +209,8 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
 
   const visibleColleges = filteredColleges.slice(0, visibleCount);
 
-  const statusLabel = STATUS_OPTIONS.find(s => s.id === selectedStatus)?.label || '';
-  const branchLabel = BRANCH_OPTIONS.find(b => b.id === selectedBranch)?.label || '';
+  const statusLabel = statusOptions.find(s => s.id === selectedStatus)?.label || '';
+  const branchLabel = selectedBranch === ALL_BRANCHES ? '' : selectedBranch;
   const categoryLabel = selectedCategory === ALL_CATEGORIES
     ? 'All Categories'
     : categories.find(c => c.id === selectedCategory)?.label?.split(' ')[0] || selectedCategory;
@@ -266,14 +232,25 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
       </div>
 
       <div>
-        <label className="text-sm font-bold text-slate-700 mb-2 block">Branch</label>
-        <select
+        <label className="text-sm font-bold text-slate-700 mb-2 block">Course search</label>
+        <input
+          type="search"
           value={selectedBranch}
-          onChange={(e) => setSelectedBranch(e.target.value)}
+          onChange={(e) => setSelectedBranch(e.target.value || ALL_BRANCHES)}
+          placeholder="All courses or type a course name"
+          className="touch-target w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm font-semibold rounded-xl px-4 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
+        />
+      </div>
+
+      <div>
+        <label className="text-sm font-bold text-slate-700 mb-2 block">Region</label>
+        <select
+          value={selectedRegion}
+          onChange={(e) => setSelectedRegion(e.target.value)}
           className="touch-target w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm font-semibold rounded-xl px-4 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
         >
-          {BRANCH_OPTIONS.map((br) => (
-            <option key={br.id} value={br.id}>{br.label}</option>
+          {regionOptions.map((region) => (
+            <option key={region.id} value={region.id}>{region.label}</option>
           ))}
         </select>
       </div>
@@ -285,7 +262,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
           onChange={(e) => setSelectedStatus(e.target.value)}
           className="touch-target w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm font-semibold rounded-xl px-4 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
         >
-          {STATUS_OPTIONS.map((s) => (
+          {statusOptions.map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
@@ -334,7 +311,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
             Explore <span className="text-google-blue-500">Maharashtra</span> Engineering Cutoffs
           </h1>
           <p className="text-sm text-slate-500 mt-2">
-            Browse all Maharashtra engineering colleges. Filter by category, region, branch, or minimum percentile to narrow down.
+            Browse all 2026 Maharashtra engineering courses. Filter by CAP round, category, region, course, college type, or percentile.
           </p>
         </div>
 
@@ -346,7 +323,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by college name, city, or DTE code…"
+              placeholder="Search college, city, university, course, or DTE code…"
               className="w-full pl-11 sm:pl-13 pr-10 py-3.5 rounded-full text-sm font-medium bg-white text-slate-800 placeholder-slate-400 focus:outline-none"
             />
             {searchTerm ? (
@@ -386,8 +363,11 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
             {selectedStatus !== 'ALL' ? (
               <Chip color="blue" label={statusLabel} onRemove={() => setSelectedStatus('ALL')} />
             ) : null}
-            {selectedBranch !== 'ALL' ? (
-              <Chip color="blue" label={branchLabel} onRemove={() => setSelectedBranch('ALL')} />
+            {selectedRegion !== 'ALL' ? (
+              <Chip color="blue" label={selectedRegion} onRemove={() => setSelectedRegion('ALL')} />
+            ) : null}
+            {selectedBranch !== ALL_BRANCHES ? (
+              <Chip color="blue" label={branchLabel} onRemove={() => setSelectedBranch(ALL_BRANCHES)} />
             ) : null}
             {selectedCategory !== defaultCatId ? (
               <Chip color="blue" label={categoryLabel} onRemove={() => setSelectedCategory(defaultCatId)} />
@@ -421,7 +401,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
             <label className="text-xs font-bold text-slate-600 mb-1.5 block">Reservation Category</label>
             <select
@@ -437,14 +417,25 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-600 mb-1.5 block">Branch Filter</label>
-            <select
+            <label className="text-xs font-bold text-slate-600 mb-1.5 block">Course Search</label>
+            <input
+              type="search"
               value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
+              onChange={(e) => setSelectedBranch(e.target.value || ALL_BRANCHES)}
+              placeholder="All courses"
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold rounded-xl p-2.5 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-600 mb-1.5 block">Region</label>
+            <select
+              value={selectedRegion}
+              onChange={(e) => setSelectedRegion(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold rounded-xl p-2.5 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
             >
-              {BRANCH_OPTIONS.map((br) => (
-                <option key={br.id} value={br.id}>{br.label}</option>
+              {regionOptions.map((region) => (
+                <option key={region.id} value={region.id}>{region.label}</option>
               ))}
             </select>
           </div>
@@ -456,7 +447,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
               onChange={(e) => setSelectedStatus(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold rounded-xl p-2.5 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
             >
-              {STATUS_OPTIONS.map((s) => (
+              {statusOptions.map((s) => (
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
             </select>
@@ -499,7 +490,8 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
           Showing <span className="font-bold text-slate-900">{visibleColleges.length}</span> of <span className="font-bold text-slate-900">{filteredColleges.length}</span> colleges matching criteria
         </div>
         <div className="text-xs text-slate-500 font-medium hidden sm:block">
-          Active Category: <span className="font-bold text-google-blue-600 bg-google-blue-50 px-2 py-0.5 rounded border border-google-blue-100">{categoryLabel}</span>
+          <span className="mr-2">{ROUND_LABELS[selectedRound]}</span>
+          <span>Category: <span className="font-bold text-google-blue-600 bg-google-blue-50 px-2 py-0.5 rounded border border-google-blue-100">{categoryLabel}</span></span>
         </div>
       </div>
 
@@ -512,6 +504,7 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
               <CollegeCard
                 key={college.code}
                 college={college}
+                selectedRound={selectedRound}
                 selectedCategory={selectedCategory}
                 isCompared={isCompared}
                 onToggleCompare={onToggleCompare}

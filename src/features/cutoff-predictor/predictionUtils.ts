@@ -1,13 +1,14 @@
-import type { College } from '../../shared/types/college';
-import { ALL_CATEGORIES, getBestCutoff } from '../../shared/lib/college';
+import type { College, CutoffData } from '../../shared/types/college';
+import { ALL_CATEGORIES, getBestCutoff, getPreferredCutoff, normalizeSearchText } from '../../shared/lib/college';
 
 export type PredictionBucket = 'safe' | 'moderate' | 'dream';
 
 export interface Prediction {
   college: College;
   branchName: string;
+  cutoff: CutoffData;
   cutoffP: number;
-  rank: number;
+  meritNumber: number | null;
   margin: number;
 }
 
@@ -27,24 +28,28 @@ export function calculatePredictions(
   branchFilter: string,
 ): Predictions {
   const percentile = typeof userPercentile === 'number' ? userPercentile : Number.parseFloat(userPercentile);
-  if (Number.isNaN(percentile) || percentile < 0 || !category) return EMPTY_PREDICTIONS;
+  if (!Number.isFinite(percentile) || percentile < 0 || percentile > 100 || !category) return EMPTY_PREDICTIONS;
 
   const predictions: Predictions = { safeList: [], moderateList: [], dreamList: [] };
+  const normalizedBranchFilter = normalizeSearchText(branchFilter);
 
   colleges.forEach((college) => {
-    if (region !== 'ALL' && college.region !== region && !college.city.toLowerCase().includes(region.toLowerCase())) return;
+    if (region !== 'ALL' && college.region !== region) return;
 
     college.branches.forEach((branch) => {
-      if (branchFilter !== 'ALL' && !branch.name.toLowerCase().includes(branchFilter.toLowerCase())) return;
+      if (normalizedBranchFilter && !normalizeSearchText(branch.name).includes(normalizedBranchFilter)) return;
 
-      const cutoff = category === ALL_CATEGORIES ? getBestCutoff(branch) : branch.cutoffs2025[category];
-      if (!cutoff || !Number.isFinite(cutoff.percentile) || !Number.isFinite(cutoff.rank)) return;
+      const cutoff = category === ALL_CATEGORIES
+        ? getBestCutoff(branch)
+        : getPreferredCutoff(branch, category);
+      if (!cutoff) return;
 
-      const prediction = {
+      const prediction: Prediction = {
         college,
         branchName: branch.name,
+        cutoff,
         cutoffP: cutoff.percentile,
-        rank: cutoff.rank,
+        meritNumber: cutoff.meritNumber,
         margin: percentile - cutoff.percentile,
       };
 

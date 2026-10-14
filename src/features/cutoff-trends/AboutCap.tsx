@@ -7,7 +7,7 @@ const CAP_QUESTIONS = [
   },
   {
     question: 'How should I use the cutoff shown on this site?',
-    answer: 'Treat a cutoff as a reference point, not a guarantee. Compare your percentile with the cutoff for your exact category, university area, branch, and college before adding an option to your preference form.',
+    answer: 'Select the CAP round and compare your percentile with the cutoff for your exact category, university area, branch, and college before adding an option to your preference form. A cutoff is a reference point, not a guarantee.',
   },
   {
     question: 'What do GOPENH and GOPENO mean?',
@@ -15,11 +15,15 @@ const CAP_QUESTIONS = [
   },
   {
     question: 'Why might a college or branch not appear in my results?',
-    answer: 'The explorer and predictor show only branches with a published cutoff for your selected category. Change the category, branch, or region filters to review other available options.',
+    answer: 'All courses from the 2026 CAP PDFs are retained, but a course may have no published cutoff for a particular round and category. Change the round, category, course, or region filters to review other available options.',
   },
   {
     question: 'What should I do before submitting my option form?',
     answer: 'Verify your eligibility, documents, category, and the current official CAP information. Keep ambitious, target, and safer preferences in your list, then confirm every choice on the official CET Cell portal.',
+  },
+  {
+    question: 'What does the rating mean?',
+    answer: 'The star-like score is derived from the strongest published 2026 cutoff for that college and round. It is a cutoff-strength indicator, not a student review, accreditation, placement, or official CET Cell rating.',
   },
 ] as const;
 
@@ -36,7 +40,7 @@ export function AboutCap() {
               About <span className="text-google-blue-500">CAP</span>
             </h1>
             <p className="text-sm text-slate-500 font-medium">
-              Practical answers for using MHT-CET cutoff data and building your preference list.
+              Practical answers for using 2026 MHT-CET CAP cutoff data and building your preference list.
             </p>
           </div>
         </div>
