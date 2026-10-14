@@ -78,7 +78,7 @@ export function App() {
         onRoundChange={setSelectedRound}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8">
+      <main id="home" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8">
         {activeTab === 'explore' && colleges && (
           <CollegeExplorer
             colleges={colleges}

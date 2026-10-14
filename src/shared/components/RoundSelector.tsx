@@ -10,7 +10,7 @@ interface RoundSelectorProps {
 
 export const RoundSelector: React.FC<RoundSelectorProps> = ({ value, onChange, compact = false }) => (
   <label className={`inline-flex items-center gap-2 ${compact ? 'text-xs' : 'text-sm'} font-bold text-slate-700`}>
-    <span className="shrink-0">Cutoff round</span>
+    <span className="shrink-0">{compact ? 'Round' : 'Cutoff round'}</span>
     <select
       value={value}
       onChange={(event) => onChange(Number(event.target.value) as CapRound)}

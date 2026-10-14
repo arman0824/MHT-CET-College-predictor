@@ -7,6 +7,7 @@ interface MobileSheetProps {
   title?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  id?: string;
   /** When true, the sheet becomes a side drawer (used by Navbar hamburger). */
   variant?: 'sheet' | 'drawer';
 }
@@ -17,6 +18,7 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
   title,
   children,
   footer,
+  id,
   variant = 'sheet'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,7 +45,12 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
   const isDrawer = variant === 'drawer';
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 md:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title && id ? `${id}-title` : undefined}
+    >
       <div
         className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm animate-fadeIn"
         onClick={onClose}
@@ -52,6 +59,7 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
 
       <div
         ref={containerRef}
+        id={id}
         className={
           isDrawer
             ? 'absolute top-0 right-0 h-full w-[88%] max-w-sm bg-white shadow-2xl flex flex-col animate-slideInRight'
@@ -60,7 +68,7 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
       >
         {isDrawer ? (
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-            <div className="font-extrabold text-slate-900 text-base">{title}</div>
+             <div id={id ? `${id}-title` : undefined} className="font-extrabold text-slate-900 text-base">{title}</div>
             <button
               onClick={onClose}
               className="touch-target inline-flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700"
