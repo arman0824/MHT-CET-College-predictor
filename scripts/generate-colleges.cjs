@@ -1,76 +1,102 @@
 const fs = require('fs');
 const path = require('path');
 
-const jsonPath = path.resolve(__dirname, '../data/source/colleges.json');
-const outputPath = path.resolve(__dirname, '../public/data/colleges.json');
+const sourcePath = path.resolve(__dirname, '../data/source/colleges-2026.json');
+const outputDir = path.resolve(__dirname, '../public/data');
+const rounds = [1, 2, 3, 4];
 
-if (!fs.existsSync(jsonPath)) {
-  console.error('❌ Error: colleges.json not found in ' + __dirname);
+if (!fs.existsSync(sourcePath)) {
+  console.error(`Error: ${sourcePath} was not found. Run npm run data:extract first.`);
   process.exit(1);
 }
 
-const rawData = fs.readFileSync(jsonPath, 'utf8');
-const jsonColleges = JSON.parse(rawData);
-
-// Rank estimation formula based on percentile (out of ~200,000 CET candidates)
-function estimateRank(percentile) {
-  if (percentile <= 0) return 200000;
-  if (percentile >= 100) return 1;
-  return Math.max(1, Math.round(((100 - percentile) / 100) * 200000));
+const source = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+if (source.schemaVersion !== '2026-cap-v1') {
+  console.error(`Error: unsupported source schema ${source.schemaVersion}`);
+  process.exit(1);
 }
 
-const collegesData = jsonColleges.map((college) => {
-  return {
-    code: String(college.code || '').padStart(4, '0'),
-    name: college.name,
-    shortName: college.shortName || college.name.split(',')[0].substring(0, 30),
-    city: college.city || 'Maharashtra',
-    region: college.region || 'Maharashtra',
-    status: college.status || 'Un-Aided',
-    established: college.established || 1990,
-    fees: college.fees || 100000,
-    rating: college.rating || 4.0,
-    website: college.website || '#',
-    branches: (college.branches || []).map((branch) => {
-      // Process 2025 Cutoffs strictly from JSON (No fallback categories)
-      const cutoffs2025 = {};
-      if (branch.cutoffs2025) {
-        Object.entries(branch.cutoffs2025).forEach(([category, pVal]) => {
-          const percentile = parseFloat(pVal);
-          if (!isNaN(percentile)) {
-            cutoffs2025[category] = {
-              percentile: Number(percentile.toFixed(4)),
-              rank: estimateRank(percentile)
-            };
-          }
-        });
-      }
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
-      // Process 2024 Cutoffs (if present)
-      const cutoffs2024 = {};
-      if (branch.cutoffs2024) {
-        Object.entries(branch.cutoffs2024).forEach(([category, pVal]) => {
-          const percentile = parseFloat(pVal);
-          if (!isNaN(percentile)) {
-            cutoffs2024[category] = {
-              percentile: Number(percentile.toFixed(4)),
-              rank: estimateRank(percentile)
-            };
-          }
-        });
-      }
+function cutoffRating(college, round) {
+  const percentiles = college.branches.flatMap((branch) =>
+    Object.values(branch.cutoffs2026[String(round)] || {}).flatMap((values) =>
+      values.map((cutoff) => cutoff.percentile),
+    ),
+  );
+
+  if (percentiles.length === 0) return null;
+
+  // This is intentionally a transparent cutoff-strength score, not a review
+  // rating. A 100th-percentile published cutoff maps to 5 and 0 to 1.
+  const strongestCutoff = Math.max(...percentiles);
+  return clamp(Math.round((1 + strongestCutoff / 25) * 2) / 2, 1, 5);
+}
+
+function publicCutoff(cutoff) {
+  return {
+    percentile: Number(cutoff.percentile.toFixed(7)),
+    meritNumber: cutoff.meritNumber ?? null,
+    stage: cutoff.stage || null,
+    allocation: cutoff.allocation || null,
+  };
+}
+
+function publicCollege(college, round) {
+  return {
+    code: college.code,
+    name: college.name,
+    shortName: college.shortName,
+    city: college.city,
+    region: college.region,
+    status: college.status,
+    homeUniversity: college.homeUniversity,
+    ownership: college.ownership,
+    autonomous: college.autonomous,
+    minority: college.minority,
+    established: college.established,
+    fees: college.fees,
+    website: college.website,
+    rating: cutoffRating(college, round),
+    ratingSource: 'Derived from strongest published 2026 CAP cutoff',
+    metadataSource: college.metadataSource,
+    branches: college.branches.map((branch) => {
+      const sourceCutoffs = college.branches.length > 0
+        ? branch.cutoffs2026[String(round)] || {}
+        : {};
+      const cutoffs = Object.fromEntries(
+        Object.entries(sourceCutoffs).map(([category, values]) => [
+          category,
+          values.map(publicCutoff),
+        ]),
+      );
 
       return {
-        code: String(branch.code || ''),
+        code: branch.code,
         name: branch.name,
-        intake: branch.intake || 60,
-        cutoffs2025,
-        cutoffs2024: Object.keys(cutoffs2024).length > 0 ? cutoffs2024 : cutoffs2025
+        intake: branch.intake,
+        cutoffs,
       };
-    })
+    }),
   };
-});
+}
 
-fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-fs.writeFileSync(outputPath, JSON.stringify(collegesData), 'utf8');
-console.log('✅ Successfully regenerated public/data/colleges.json from data/source/colleges.json.');
+fs.mkdirSync(outputDir, { recursive: true });
+const legacyOutput = path.join(outputDir, 'colleges.json');
+if (fs.existsSync(legacyOutput)) fs.rmSync(legacyOutput);
+
+for (const round of rounds) {
+  const output = {
+    schemaVersion: '2026-cap-v1-round',
+    academicYear: '2026-27',
+    round,
+    label: `CAP Round ${round}`,
+    pdf: `/round${round}_26.pdf`,
+    colleges: source.colleges.map((college) => publicCollege(college, round)),
+  };
+  const outputPath = path.join(outputDir, `colleges-2026-round${round}.json`);
+  fs.writeFileSync(outputPath, JSON.stringify(output), 'utf8');
+  console.log(`Generated ${outputPath}`);
+}
