@@ -129,6 +129,16 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
     })),
   ], [colleges]);
 
+  const courseOptions = useMemo(() => [
+    { id: ALL_BRANCHES, label: 'All courses' },
+    ...Array.from(new Map(
+      colleges.flatMap((college) => college.branches.map((branch) => [branch.name, branch.name] as const)),
+    ).values()).sort((first, second) => first.localeCompare(second)).map((course) => ({
+      id: course,
+      label: course,
+    })),
+  ], [colleges]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -232,14 +242,14 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
       </div>
 
       <div>
-        <label className="text-sm font-bold text-slate-700 mb-2 block">Course search</label>
-        <input
-          type="search"
+        <label className="text-sm font-bold text-slate-700 mb-2 block">Course</label>
+        <select
           value={selectedBranch}
-          onChange={(e) => setSelectedBranch(e.target.value || ALL_BRANCHES)}
-          placeholder="All courses or type a course name"
+          onChange={(e) => setSelectedBranch(e.target.value)}
           className="touch-target w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm font-semibold rounded-xl px-4 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
-        />
+        >
+          {courseOptions.map((course) => <option key={course.id} value={course.id}>{course.label}</option>)}
+        </select>
       </div>
 
       <div>
@@ -417,14 +427,14 @@ export const CollegeExplorer: React.FC<CollegeExplorerProps> = ({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-600 mb-1.5 block">Course Search</label>
-            <input
-              type="search"
+            <label className="text-xs font-bold text-slate-600 mb-1.5 block">Course</label>
+            <select
               value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value || ALL_BRANCHES)}
-              placeholder="All courses"
               className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold rounded-xl p-2.5 focus:bg-white focus:ring-2 focus:ring-google-blue-500 focus:outline-none"
-            />
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              {courseOptions.map((course) => <option key={course.id} value={course.id}>{course.label}</option>)}
+            </select>
           </div>
 
           <div>

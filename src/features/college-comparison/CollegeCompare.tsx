@@ -42,6 +42,8 @@ export const CollegeCompare: React.FC<CollegeCompareProps> = ({
 }) => {
   const [layout, setLayout] = useState<Layout>('stacked');
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [showAllCourses, setShowAllCourses] = useState(false);
   const categories = useMemo(() => discoverCategories(comparedColleges), [comparedColleges]);
   const [selectedCategory, setSelectedCategory] = useState<string>(ALL_CATEGORIES);
 
@@ -58,6 +60,15 @@ export const CollegeCompare: React.FC<CollegeCompareProps> = ({
       .map(([code, name]) => ({ code, name }))
       .sort((first, second) => first.name.localeCompare(second.name));
   }, [comparedColleges]);
+
+  const filteredCourseRows = useMemo(() => {
+    if (!selectedCourse) return courseRows;
+    return courseRows.filter((course) => course.code === selectedCourse);
+  }, [courseRows, selectedCourse]);
+
+  const visibleCourseRows = showAllCourses || selectedCourse
+    ? filteredCourseRows
+    : filteredCourseRows.slice(0, 50);
 
   const handleClear = () => {
     if (confirmingClear) {
@@ -126,6 +137,31 @@ export const CollegeCompare: React.FC<CollegeCompareProps> = ({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <label className="flex-1 min-w-[220px] text-xs font-bold text-slate-600">
+          Course in this comparison
+          <select
+            value={selectedCourse}
+            onChange={(event) => setSelectedCourse(event.target.value)}
+            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-google-blue-500"
+          >
+            <option value="">All courses</option>
+            {courseRows.map((course) => <option key={course.code} value={course.code}>{course.name} · {course.code}</option>)}
+          </select>
+        </label>
+        <div className="text-xs text-slate-500">
+          Showing <span className="font-bold text-slate-800">{visibleCourseRows.length}</span> of {filteredCourseRows.length} matching courses
+        </div>
+        {selectedCourse ? null : (
+          <button
+            onClick={() => setShowAllCourses((current) => !current)}
+            className="google-btn-secondary text-xs"
+          >
+            {showAllCourses ? 'Show fewer courses' : 'Show all courses'}
+          </button>
+        )}
+      </div>
+
       <div className="md:hidden">
         {layout === 'stacked' ? (
           <div className="space-y-3">
@@ -145,19 +181,19 @@ export const CollegeCompare: React.FC<CollegeCompareProps> = ({
                   </MetadataRow>
                   <MetadataRow label="Courses">{college.branches.length}</MetadataRow>
                   <div className="mt-3 space-y-2">
-                    {college.branches.map((branch) => <div key={branch.code} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5"><div className="text-xs font-bold text-slate-800">{branch.name}</div><div className="text-[10px] text-slate-400 font-mono">{branch.code}</div><div className="mt-1">{formatCutoff(getBranchCutoff(college, branch.code))}</div></div>)}
+                    {visibleCourseRows.map((course) => <div key={course.code} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5"><div className="text-xs font-bold text-slate-800">{course.name}</div><div className="text-[10px] text-slate-400 font-mono">{course.code}</div><div className="mt-1">{formatCutoff(getBranchCutoff(college, course.code))}</div></div>)}
                   </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <CompareTable colleges={comparedColleges} courses={courseRows} getCutoff={getBranchCutoff} onRemove={onRemoveCompare} />
+          <CompareTable colleges={comparedColleges} courses={visibleCourseRows} getCutoff={getBranchCutoff} onRemove={onRemoveCompare} />
         )}
       </div>
 
       <div className="hidden md:block">
-        <CompareTable colleges={comparedColleges} courses={courseRows} getCutoff={getBranchCutoff} onRemove={onRemoveCompare} />
+        <CompareTable colleges={comparedColleges} courses={visibleCourseRows} getCutoff={getBranchCutoff} onRemove={onRemoveCompare} />
       </div>
     </div>
   );

@@ -166,6 +166,16 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
     })),
   ], [colleges]);
 
+  const courseOptions = useMemo(() => [
+    { id: '', label: 'All courses' },
+    ...Array.from(new Map(
+      colleges.flatMap((college) => college.branches.map((branch) => [branch.name, branch.name] as const)),
+    ).values()).sort((first, second) => first.localeCompare(second)).map((course) => ({
+      id: course,
+      label: course,
+    })),
+  ], [colleges]);
+
   // Allowed userPercentile state to be number OR string to permit clear/empty inputs
   const [userPercentile, setUserPercentile] = useState<number | string>(initial?.percentile ?? 95.0);
   const [userCategory, setUserCategory] = useState<string>(() => {
@@ -184,6 +194,12 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
       setUserCategory(categories[0].id);
     }
   }, [categories, userCategory]);
+
+  useEffect(() => {
+    if (selectedBranch && !courseOptions.some((course) => course.id === selectedBranch)) {
+      setSelectedBranch('');
+    }
+  }, [courseOptions, selectedBranch]);
 
   useEffect(() => {
     setSaved(!!loadPersisted());
@@ -287,13 +303,13 @@ export const CutoffPredictor: React.FC<CutoffPredictorProps> = ({
 
           <div>
             <label className="text-sm font-bold text-slate-700 mb-2 block">Preferred Course</label>
-            <input
-              type="search"
+            <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              placeholder="All courses or search"
               className="touch-target w-full bg-white border border-slate-300 text-slate-800 text-sm font-semibold rounded-xl p-3.5 focus:ring-2 focus:ring-google-green-500 focus:outline-none shadow-sm"
-            />
+            >
+              {courseOptions.map((course) => <option key={course.id || 'ALL'} value={course.id}>{course.label}</option>)}
+            </select>
           </div>
 
           <div>
